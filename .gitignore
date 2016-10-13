@@ -4,4 +4,9 @@
 /target
 /build/
 /src/test/
-.*
+
+.travis.yml
+
+# IntelliJ Files
+*.idea
+*.iml
