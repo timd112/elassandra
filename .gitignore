@@ -4,8 +4,8 @@
 /target
 /build/
 /src/test/
-
 .travis.yml
+dependency-reduced-pom.xml
 
 # IntelliJ Files
 *.idea

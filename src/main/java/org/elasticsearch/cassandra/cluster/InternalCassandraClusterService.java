@@ -40,6 +40,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import org.apache.cassandra.auth.AuthenticatedUser;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.config.DatabaseDescriptor;
@@ -283,8 +284,12 @@ public class InternalCassandraClusterService extends InternalClusterService {
     
     private ConsistencyLevel metadataWriteCL = consistencyLevelFromString(System.getProperty("elassandra.metadata.write.cl","QUORUM"));
     private ConsistencyLevel metadataReadCL = consistencyLevelFromString(System.getProperty("elassandra.metadata.read.cl","QUORUM"));
-    private ConsistencyLevel metadataSerialCL = consistencyLevelFromString(System.getProperty("elassandra.metadata.serial.cl","SERIAL"));
-    
+    private ConsistencyLevel metadataSerialCL = consistencyLevelFromString(System.getProperty("elassandra.metadata" +
+        ".serial.cl", "SERIAL"));
+
+    private final String cassandraUser = System.getProperty("cassandra.user", null);
+    private final AuthenticatedUser authenticatedUser;
+
     private final String elasticAdminKeyspaceName;
     private final String selectMetadataQuery;
     private final String insertMetadataQuery;
@@ -302,6 +307,12 @@ public class InternalCassandraClusterService extends InternalClusterService {
         this.indicesService = indicesService;
         this.secondaryIndicesService = secondaryIndicesService;
         this.discoveryService = discoveryService;
+
+        if (cassandraUser != null){
+            authenticatedUser = new AuthenticatedUser(cassandraUser);
+        }else{
+            authenticatedUser = null;
+        }
         
         if (settings.get(SETTING_CLUSTER_DEFAULT_SECONDARY_INDEX_CLASS) != null) {
             try {
@@ -374,7 +385,12 @@ public class InternalCassandraClusterService extends InternalClusterService {
         if (logger.isDebugEnabled()) {
             logger.debug("processing CL={} SERIAL_CL={} query=[{}] values={} ", cl, serialConsistencyLevel, query, Arrays.toString(values));
         }
-        ParsedStatement.Prepared prepared = QueryProcessor.getStatement(query, ClientState.forInternalCalls());
+        ClientState cs = ClientState.forInternalCalls();
+
+        if(authenticatedUser != null) {
+            cs.login(authenticatedUser);
+        }
+        ParsedStatement.Prepared prepared = QueryProcessor.getStatement(query, cs);
         List<ByteBuffer> boundValues = new ArrayList<ByteBuffer>(values.length);
         for (int i = 0; i < values.length; i++) {
             Object v = values[i];
@@ -624,10 +640,6 @@ public class InternalCassandraClusterService extends InternalClusterService {
         String query = String.format("CREATE TYPE IF NOT EXISTS \"%s\".\"%s\" (input list<text>, output text, weight bigint, payload text)", ksName, COMPLETION_TYPE);
         QueryProcessor.process(query, ConsistencyLevel.LOCAL_ONE);
     }
-    
-   
-   
-    
     
     public ClusterState updateNumberOfShards(ClusterState currentState) {
         int numberOfNodes = currentState.nodes().size();
